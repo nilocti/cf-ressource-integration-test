@@ -161,4 +161,54 @@ cf target -s $space
 
 echo here is the new app...
 
+cf_temp_exec=$(mktemp $TMPDIR/cf_temp_exec.XXXXXX)
+chmod -v +x $cf_temp_exec
+echo "#!/bin/bash" > $cf_temp_exec
+
+mapfile -t environment_variables < <(jq -r '.params.environment_variables | keys[]' < $payload | tr -d '\r')
+for elm in "${environment_variables[@]}"
+do
+	val=$(jq -r '.params.environment_variables.'$elm' // ""' < $payload | tr -d '\r\n')
+	echo "$elm=$val" >> $cf_temp_exec
+	debugOutput environment_variable: $elm = $val
+done
+
+
+echo -n "exec cf push -f $manifest" >> $cf_temp_exec
+
+if [ "$vars_files" != "" ]
+then
+	echo -n " --vars-file=$vars_files" >> $cf_temp_exec
+	debugOutput variable files: $vars_files
+fi
+
+if [ "$no_start" != "" ]
+then
+	echo -n " --no-start" >> $cf_temp_exec
+	debugOutput no start
+fi
+
+if [ "$app_cl_path" != "" ]
+then
+	echo -n " -p $app_cl_path" >> $cf_temp_exec
+	debugOutput path to upload: $app_cl_path
+fi
+
+mapfile -t vars < <(jq -r '.params.vars | keys[]' < $payload | tr -d '\r')
+for elm in "${vars[@]}"
+do
+	val=$(jq -r '.params.vars.'$elm' // ""' < $payload | tr -d '\r\n')
+	echo -n " " >> $cf_temp_exec
+	echo -n "--var \"$elm=$val\"" >> $cf_temp_exec
+done
+echo "" >> $cf_temp_exec
+
+
+if [ "$DEBUG" != "" ]
+then
+	echo $cf_temp_exec
+	cat $cf_temp_exec
+fi
+$cf_temp_exec
+
 jq -n '{"version":{"id": "1"}}' >&3
